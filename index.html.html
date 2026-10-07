@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>톡톡 강의 타이머</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&family=Pretendard:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background-color: #FAFAFA;
+            color: #2F3437;
+        }
+        .sketch-font {
+            font-family: 'Nanum Pen Script', cursive;
+        }
+        .sketch-box {
+            border: 2px solid #2F3437;
+            border-radius: 12px;
+            box-shadow: 3px 3px 0px #2F3437;
+        }
+        .sketch-button {
+            border: 2px solid #2F3437;
+            border-radius: 8px;
+            box-shadow: 2px 2px 0px #2F3437;
+            transition: all 0.1s ease;
+        }
+        .sketch-button:active {
+            transform: translate(2px, 2px);
+            box-shadow: 0px 0px 0px #2F3437;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-white p-8 sketch-box flex flex-col items-center">
+        
+        <!-- Header -->
+        <h1 class="text-2xl font-bold mb-6 text-center tracking-tight flex items-center justify-center">
+            톡톡 강의 타이머
+        </h1>
+
+        <!-- Timer Display / Input Screen -->
+        <div id="display-container" class="w-full text-center mb-6">
+            <div id="timer-display" class="text-7xl font-mono font-semibold tracking-wider mb-2 text-gray-800">
+                00:00
+            </div>
+            <div id="end-message" class="sketch-font text-4xl text-orange-500 h-10 font-bold opacity-0 transition-opacity duration-300">
+                끝! 수고하셨습니다 👏
+            </div>
+        </div>
+
+        <!-- Input Form (Visible when stopped and reset) -->
+        <div id="input-container" class="flex gap-3 mb-6 w-full justify-center items-center">
+            <div class="flex items-center gap-1">
+                <input type="number" id="input-min" min="0" max="99" placeholder="00" 
+                    class="w-20 p-3 text-center border-2 border-gray-800 rounded-lg text-xl font-mono focus:outline-none focus:ring-2 focus:ring-orange-400">
+                <span class="font-semibold text-gray-600">분</span>
+            </div>
+            <div class="flex items-center gap-1">
+                <input type="number" id="input-sec" min="0" max="59" placeholder="00" 
+                    class="w-20 p-3 text-center border-2 border-gray-800 rounded-lg text-xl font-mono focus:outline-none focus:ring-2 focus:ring-orange-400">
+                <span class="font-semibold text-gray-600">초</span>
+            </div>
+            <button id="set-btn" class="sketch-button bg-orange-500 text-white font-semibold px-4 py-3 hover:bg-orange-600">
+                설정
+            </button>
+        </div>
+
+        <!-- Control Buttons -->
+    <div class="flex gap-4 w-full justify-center">
+        <button id="start-pause-btn" class="sketch-button flex-1 bg-gray-900 text-white font-semibold py-3 px-6 text-lg hover:bg-gray-800">
+            시작
+        </button>
+        <button id="reset-btn" class="sketch-button bg-white text-gray-800 font-semibold py-3 px-6 text-lg hover:bg-gray-100">
+            초기화
+        </button>
+    </div>
+</div>
+
+<!-- Footer info -->
+<div class="mt-6 text-xs text-gray-500 font-medium">
+    Designed by 베리쌤 ✨
+</div>
+
+<script>
+    let totalSeconds = 0;
+    let remainingSeconds = 0;
+    let timerInterval = null;
+    let isRunning = false;
+    let isPaused = false;
+
+    const display = document.getElementById('timer-display');
+    const endMessage = document.getElementById('end-message');
+    const inputContainer = document.getElementById('input-container');
+    const inputMin = document.getElementById('input-min');
+    const inputSec = document.getElementById('input-sec');
+    const setBtn = document.getElementById('set-btn');
+    const startPauseBtn = document.getElementById('start-pause-btn');
+    const resetBtn = document.getElementById('reset-btn');
+
+    // Web Audio API to play a cheerful custom alarm sound reliably
+    function playAlarmSound() {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = new AudioContext();
+
+            // Notes for a cheerful ending jingle (C5, E5, G5, C6)
+            const notes = [523.25, 659.25, 783.99, 1046.50];
+            const noteDuration = 0.15;
+            
+            notes.forEach((freq, index) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, ctx.currentTime + index * noteDuration);
+                
+                gain.gain.setValueAtTime(0.2, ctx.currentTime + index * noteDuration);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (index + 1) * noteDuration + 0.1);
+                
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                
+                osc.start(ctx.currentTime + index * noteDuration);
+                osc.stop(ctx.currentTime + (index + 1) * noteDuration + 0.1);
+            });
+        } catch (e) {
+            console.log("Web Audio error:", e);
+        }
+    }
+
+    function updateDisplay() {
+        const m = Math.floor(remainingSeconds / 60);
+        const s = remainingSeconds % 60;
+        display.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    setBtn.addEventListener('click', () => {
+        const m = parseInt(inputMin.value) || 0;
+        const s = parseInt(inputSec.value) || 0;
+        totalSeconds = (m * 60) + s;
+        if (totalSeconds <= 0) {
+            return;
+        }
+        remainingSeconds = totalSeconds;
+        updateDisplay();
+        endMessage.style.opacity = '0';
+    });
+
+    startPauseBtn.addEventListener('click', () => {
+        if (!isRunning) {
+            if (remainingSeconds <= 0) {
+                return;
+            }
+
+            isRunning = true;
+            isPaused = false;
+            startPauseBtn.textContent = '일시정지';
+            startPauseBtn.classList.remove('bg-gray-900', 'hover:bg-gray-800');
+            startPauseBtn.classList.add('bg-orange-500', 'hover:bg-orange-600');
+            inputContainer.style.display = 'none';
+            endMessage.style.opacity = '0';
+
+            timerInterval = setInterval(() => {
+                if (remainingSeconds > 0) {
+                    remainingSeconds--;
+                    updateDisplay();
+                }
+
+                if (remainingSeconds <= 0) {
+                    clearInterval(timerInterval);
+                    isRunning = false;
+                    startPauseBtn.textContent = '시작';
+                    startPauseBtn.classList.remove('bg-orange-500', 'hover:bg-orange-600');
+                    startPauseBtn.classList.add('bg-gray-900', 'hover:bg-gray-800');
+                    endMessage.style.opacity = '1';
+                    playAlarmSound();
+                }
+            }, 1000);
+        } else {
+            // Pause logic
+            clearInterval(timerInterval);
+            isRunning = false;
+            isPaused = true;
+            startPauseBtn.textContent = '계속';
+            startPauseBtn.classList.remove('bg-orange-500', 'hover:bg-orange-600');
+            startPauseBtn.classList.add('bg-gray-900', 'hover:bg-gray-800');
+        }
+    });
+
+    resetBtn.addEventListener('click', () => {
+        clearInterval(timerInterval);
+        
+        isRunning = false;
+        isPaused = false;
+        startPauseBtn.textContent = '시작';
+        startPauseBtn.classList.remove('bg-orange-500', 'hover:bg-orange-600');
+        startPauseBtn.classList.add('bg-gray-900', 'hover:bg-gray-800');
+        inputContainer.style.display = 'flex';
+        endMessage.style.opacity = '0';
+        
+        const m = parseInt(inputMin.value) || 0;
+        const s = parseInt(inputSec.value) || 0;
+        totalSeconds = (m * 60) + s;
+        remainingSeconds = totalSeconds;
+        updateDisplay();
+    });
+
+    // Initialize view
+    updateDisplay();
+</script>
+</body>
+</html>
